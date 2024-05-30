@@ -76,6 +76,8 @@ class _$AppDatabase extends AppDatabase {
 
   FavoriteDao? _favoriteDaoInstance;
 
+  CommentDao? _commentDaoInstance;
+
   Future<sqflite.Database> open(
     String path,
     List<Migration> migrations, [
@@ -101,6 +103,8 @@ class _$AppDatabase extends AppDatabase {
             'CREATE TABLE IF NOT EXISTS `Event` (`id` INTEGER NOT NULL, `name` TEXT NOT NULL, `description` TEXT NOT NULL, `date` TEXT NOT NULL, PRIMARY KEY (`id`))');
         await database.execute(
             'CREATE TABLE IF NOT EXISTS `Favorite` (`id` INTEGER NOT NULL, `eventId` INTEGER NOT NULL, PRIMARY KEY (`id`))');
+        await database.execute(
+            'CREATE TABLE IF NOT EXISTS `Comment` (`id` INTEGER NOT NULL, `eventId` INTEGER NOT NULL, `text` TEXT NOT NULL, `rating` REAL NOT NULL, `date` TEXT NOT NULL, PRIMARY KEY (`id`))');
 
         await callback?.onCreate?.call(database, version);
       },
@@ -116,6 +120,11 @@ class _$AppDatabase extends AppDatabase {
   @override
   FavoriteDao get favoriteDao {
     return _favoriteDaoInstance ??= _$FavoriteDao(database, changeListener);
+  }
+
+  @override
+  CommentDao get commentDao {
+    return _commentDaoInstance ??= _$CommentDao(database, changeListener);
   }
 }
 
@@ -150,6 +159,22 @@ class _$EventDao extends EventDao {
             row['name'] as String,
             row['description'] as String,
             row['date'] as String));
+  }
+
+  @override
+  Future<List<Event>> findEventsByIds(List<int> ids) async {
+    const offset = 1;
+    final _sqliteVariablesForIds =
+        Iterable<String>.generate(ids.length, (i) => '?${i + offset}')
+            .join(',');
+    return _queryAdapter.queryList(
+        'SELECT * FROM Event WHERE id IN (' + _sqliteVariablesForIds + ')',
+        mapper: (Map<String, Object?> row) => Event(
+            row['id'] as int,
+            row['name'] as String,
+            row['description'] as String,
+            row['date'] as String),
+        arguments: [...ids]);
   }
 
   @override
@@ -194,6 +219,13 @@ class _$FavoriteDao extends FavoriteDao {
   }
 
   @override
+  Future<List<Favorite>> findAllFavorites() async {
+    return _queryAdapter.queryList('SELECT * FROM Favorite',
+        mapper: (Map<String, Object?> row) =>
+            Favorite(row['id'] as int, row['eventId'] as int));
+  }
+
+  @override
   Future<void> insertFavorite(Favorite favorite) async {
     await _favoriteInsertionAdapter.insert(favorite, OnConflictStrategy.abort);
   }
@@ -201,5 +233,65 @@ class _$FavoriteDao extends FavoriteDao {
   @override
   Future<void> deleteFavorite(Favorite favorite) async {
     await _favoriteDeletionAdapter.delete(favorite);
+  }
+}
+
+class _$CommentDao extends CommentDao {
+  _$CommentDao(
+    this.database,
+    this.changeListener,
+  )   : _queryAdapter = QueryAdapter(database),
+        _commentInsertionAdapter = InsertionAdapter(
+            database,
+            'Comment',
+            (Comment item) => <String, Object?>{
+                  'id': item.id,
+                  'eventId': item.eventId,
+                  'text': item.text,
+                  'rating': item.rating,
+                  'date': item.date
+                }),
+        _commentDeletionAdapter = DeletionAdapter(
+            database,
+            'Comment',
+            ['id'],
+            (Comment item) => <String, Object?>{
+                  'id': item.id,
+                  'eventId': item.eventId,
+                  'text': item.text,
+                  'rating': item.rating,
+                  'date': item.date
+                });
+
+  final sqflite.DatabaseExecutor database;
+
+  final StreamController<String> changeListener;
+
+  final QueryAdapter _queryAdapter;
+
+  final InsertionAdapter<Comment> _commentInsertionAdapter;
+
+  final DeletionAdapter<Comment> _commentDeletionAdapter;
+
+  @override
+  Future<List<Comment>> findCommentsByEventId(int eventId) async {
+    return _queryAdapter.queryList('SELECT * FROM Comment WHERE eventId = ?1',
+        mapper: (Map<String, Object?> row) => Comment(
+            row['id'] as int,
+            row['eventId'] as int,
+            row['text'] as String,
+            row['rating'] as double,
+            row['date'] as String),
+        arguments: [eventId]);
+  }
+
+  @override
+  Future<void> insertComment(Comment comment) async {
+    await _commentInsertionAdapter.insert(comment, OnConflictStrategy.abort);
+  }
+
+  @override
+  Future<void> deleteComment(Comment comment) async {
+    await _commentDeletionAdapter.delete(comment);
   }
 }

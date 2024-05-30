@@ -13,13 +13,38 @@ class EventList extends StatefulWidget {
 }
 
 class _EventListState extends State<EventList> {
-  Future<List<Event>> _fetchEvents() async {
-    return await widget.database.eventDao.findAllEvents();
+  List<Event> _events = [];
+  List<Event> _filteredEvents = [];
+  final TextEditingController _searchController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchEvents();
+    _searchController.addListener(_filterEvents);
+  }
+
+  void _filterEvents() {
+    final query = _searchController.text.toLowerCase();
+    setState(() {
+      _filteredEvents = _events.where((event) {
+        return event.name.toLowerCase().contains(query) ||
+            event.description.toLowerCase().contains(query);
+      }).toList();
+    });
+  }
+
+  Future<void> _fetchEvents() async {
+    final events = await widget.database.eventDao.findAllEvents();
+    setState(() {
+      _events = events;
+      _filteredEvents = events;
+    });
   }
 
   void _addEvent() async {
     await Navigator.pushNamed(context, '/add');
-    setState(() {}); // Refresh the list after adding a new event
+    _fetchEvents(); // Refresh the list after adding a new event
   }
 
   void _showEventDetails(Event event) {
@@ -37,20 +62,23 @@ class _EventListState extends State<EventList> {
       appBar: AppBar(
         title: const Text('Event List'),
       ),
-      body: FutureBuilder<List<Event>>(
-        future: _fetchEvents(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          } else if (snapshot.hasError) {
-            return const Center(child: Text('Error loading events'));
-          } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return const Center(child: Text('No events found'));
-          } else {
-            return ListView.builder(
-              itemCount: snapshot.data!.length,
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: TextField(
+              controller: _searchController,
+              decoration: const InputDecoration(
+                labelText: 'Search Events',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ),
+          Expanded(
+            child: ListView.builder(
+              itemCount: _filteredEvents.length,
               itemBuilder: (context, index) {
-                final event = snapshot.data![index];
+                final event = _filteredEvents[index];
                 return ListTile(
                   title: Text(event.name),
                   subtitle: Text(event.description),
@@ -58,9 +86,9 @@ class _EventListState extends State<EventList> {
                   onTap: () => _showEventDetails(event),
                 );
               },
-            );
-          }
-        },
+            ),
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _addEvent,
